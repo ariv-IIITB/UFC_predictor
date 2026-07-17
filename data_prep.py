@@ -1,17 +1,15 @@
 import pandas as pd
 
-# 1. Load the NEW master dataset
-data = pd.read_csv('final_data.csv', low_memory=False)
+data = pd.read_csv('final_data.csv')
 
-# 2. Convert fight date to a proper datetime object
 data['fight_date'] = pd.to_datetime(data['fight_date'])
 
-# 3. Split the data chronologically (Test set is everything after Sept 2024)
+# splitting into training and testing data
 cutoff_date = pd.to_datetime('2025-02-28')
 train_data = data[data['fight_date'] <= cutoff_date]
 test_data = data[data['fight_date'] > cutoff_date]
 
-todrop = [
+todrop = [ #constructed through hit and trial after seeing correlation and importances csv
     "a_avg_ctrl_seconds_for","a_avg_kd_against","a_avg_sig_landed_for","a_avg_sub_att_against",
     "a_finishing_durability","a_last3_avg_decision_loss_flag","a_last3_avg_finish_loss_flag",
     "a_last3_avg_finish_win_flag","a_last3_avg_scheduled_rounds","a_last3_avg_sig_landed_against",
