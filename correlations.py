@@ -1,11 +1,10 @@
 from data_prep import X_train
-import pandas as pd
+import pandas as pd #for computing and storing correlation results 
 import numpy as np
 
 corr_matrix = X_train.corr().abs()
 
-# Only look at the upper triangle so we don't get duplicate pairs (A-B and B-A)
-# or a feature correlated with itself (always 1.0)
+#
 upper = corr_matrix.where(
     np.triu(np.ones(corr_matrix.shape), k=1).astype(bool)
 )
