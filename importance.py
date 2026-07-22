@@ -7,7 +7,7 @@ print(f"X_train shape: {X_train.shape} | y_train shape: {y_train.shape}")
 print(f"X_test shape:  {X_test.shape}  | y_test shape:  {y_test.shape}")
 
 
-print("\nTraining model to evaluate all features...")
+
 model = xgb.XGBClassifier(
     n_estimators=150,
     learning_rate=0.1,
@@ -27,6 +27,7 @@ perm_df = pd.DataFrame({
     'Importance_Mean': result.importances_mean,  # type: ignore
     'Importance_Std': result.importances_std      # type: ignore
 }).sort_values('Importance_Mean', ascending=False)
+#be careful that the std deviaton is less than the mean 
 
 perm_df.to_csv("permutation_importance.csv", index=False)
 
