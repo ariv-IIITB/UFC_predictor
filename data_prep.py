@@ -64,5 +64,3 @@ X_test = test_data.drop(columns=todrop).astype(float)
 
 print(f"X_train shape: {X_train.shape} | y_train shape: {y_train.shape}")
 print(f"X_test shape:  {X_test.shape}  | y_test shape:  {y_test.shape}")
-
-
