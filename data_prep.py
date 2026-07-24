@@ -1,4 +1,5 @@
 import pandas as pd
+from sklearn.impute import SimpleImputer
 
 data = pd.read_csv('final_data.csv')
 
