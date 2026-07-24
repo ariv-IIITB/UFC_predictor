@@ -1,0 +1,4 @@
+fight_id_manual,event_name,fight_date,fighter_a,fighter_b,division_norm,scheduled_rounds,title_fight,actual_winner,actual_method,actual_round,actual_time,actual_notes
+ufc330_001,UFC 330,2026-08-15,Islam Makhachev,Ian Machado Garry,welterweight,5,1,,,,,,
+ufc330_002,UFC 330,2026-08-15,Alex Pereira,Jiri Prochazka,light heavyweight,5,0,,,,,,
+ufc330_003,UFC 330,2026-08-15,Sean O'Malley,Merab Dvalishvili,bantamweight,5,0,,,,,,
