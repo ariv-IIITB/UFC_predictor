@@ -1,0 +1,33 @@
+{
+  "start_date": "2021-01-01",
+  "end_date": "2025-09-06",
+  "region": "us",
+  "odds_selection": "latest",
+  "edge_threshold": 0.03,
+  "historical_fights_in_window": 2380,
+  "skipped_debut_or_unknown": 426,
+  "skipped_no_odds": 465,
+  "skipped_dates_no_training_data": 0,
+  "model_retrain_dates": 200,
+  "training_rows_latest": 15754,
+  "matched_fights": 1489,
+  "bets_placed": 506,
+  "wins": 228,
+  "losses": 278,
+  "units_staked": 506.0,
+  "profit_units": 69.734314,
+  "roi": 0.137815,
+  "win_rate_when_bet": 0.450593,
+  "note": "Final clean run using the fixed best-odds CSV and walk-forward XGBoost retraining.",
+  "xgb_config": {
+    "num_boost_round": 65,
+    "eta": 0.05,
+    "max_depth": 5,
+    "min_child_weight": 3.0,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "reg_lambda": 1.0,
+    "eval_metric": "logloss,auc",
+    "n_jobs": -1
+  }
+}
