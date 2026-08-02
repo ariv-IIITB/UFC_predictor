@@ -1,73 +1,34 @@
+"""
+Simplified backtest script - student-friendly and dependency-free.
+Reads history_for_odds.csv and ufc_final_best_odds.csv, uses simple
+prior-win-rate as the model, and evaluates a thresholded betting strategy.
+
+This version avoids heavy ML libs, is easy to read, and is safe to run.
+"""
+
 import csv
 import json
 from datetime import datetime
 from pathlib import Path
-
-import numpy as np
-import xgboost as xgb
-
 
 BASE_DIR = Path(__file__).resolve().parent
 HISTORY_CSV = BASE_DIR / "history_for_odds.csv"
 ODDS_CSV = BASE_DIR / "ufc_final_best_odds.csv"
 OUTPUT_DIR = BASE_DIR
 
+# Config (easy to tweak)
 START_DATE = "2021-01-01"
 END_DATE = "2025-09-06"
-EDGE_THRESHOLD = 0.03
-
-NUM_BOOST_ROUND = 65
-ETA = 0.05
-MAX_DEPTH = 5
-MIN_CHILD_WEIGHT = 3.0
-SUBSAMPLE = 0.80
-COLSAMPLE_BYTREE = 0.80
-REG_LAMBDA = 1.0
-N_JOBS = -1
-
-MODEL_FEATURES = [
-    "scheduled_rounds",
-    "title_fight",
-    "a_age_years",
-    "b_age_years",
-    "age_years_diff",
-    "a_prior_fights",
-    "b_prior_fights",
-    "prior_fights_diff",
-    "a_prior_win_rate",
-    "b_prior_win_rate",
-    "prior_win_rate_diff",
-    "a_days_since_last_fight",
-    "b_days_since_last_fight",
-    "days_since_last_fight_diff",
-    "reach_diff",
-    "height_diff",
-    "a_pre_fight_elo",
-    "b_pre_fight_elo",
-    "elo_diff",
-    "striking_offense_diff",
-    "striking_defense_diff",
-    "grappling_offense_diff",
-    "grappling_defense_diff",
-    "finishing_durability_diff",
-    "momentum_diff",
-    "experience_big_fight_diff",
-    "physical_diff",
-    "overall_diff",
-]
+EDGE_THRESHOLD = 0.03  # only bet when model edge over implied prob >= this
 
 
 def parse_float(value):
-    if value is None:
-        return 0.0
-    if isinstance(value, (int, float)):
-        return float(value)
-    text = str(value).strip()
-    if text == "":
-        return 0.0
     try:
-        return float(text)
-    except ValueError:
+        if value is None:
+            return 0.0
+        text = str(value).strip()
+        return float(text) if text != "" else 0.0
+    except Exception:
         return 0.0
 
 
@@ -80,373 +41,272 @@ def normalize_name(text):
 
 
 def write_csv(path, rows, fieldnames):
+    path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
 
 
-def add_diff_features(row):
-    row["age_years_diff"] = parse_float(row.get("a_age_years")) - parse_float(row.get("b_age_years"))
-    row["prior_fights_diff"] = parse_float(row.get("a_prior_fights")) - parse_float(row.get("b_prior_fights"))
-    row["prior_win_rate_diff"] = parse_float(row.get("a_prior_win_rate")) - parse_float(row.get("b_prior_win_rate"))
-    row["days_since_last_fight_diff"] = parse_float(row.get("a_days_since_last_fight")) - parse_float(row.get("b_days_since_last_fight"))
-    row["reach_diff"] = parse_float(row.get("a_reach")) - parse_float(row.get("b_reach"))
-    row["height_diff"] = parse_float(row.get("a_height")) - parse_float(row.get("b_height"))
-
-
-def feature_vector(row):
-    values = []
-    for column in MODEL_FEATURES:
-        values.append(parse_float(row.get(column)))
-    return values
-
-
-def train_model(train_matrix, train_labels):
-    dtrain = xgb.DMatrix(np.asarray(train_matrix, dtype=np.float32), label=np.asarray(train_labels, dtype=np.float32))
-    params = {
-        "objective": "binary:logistic",
-        "eval_metric": ["logloss", "auc"],
-        "eta": ETA,
-        "max_depth": MAX_DEPTH,
-        "min_child_weight": MIN_CHILD_WEIGHT,
-        "subsample": SUBSAMPLE,
-        "colsample_bytree": COLSAMPLE_BYTREE,
-        "lambda": REG_LAMBDA,
-        "tree_method": "hist",
-        "seed": 42,
-        "nthread": N_JOBS,
-    }
-    return xgb.train(params, dtrain, num_boost_round=NUM_BOOST_ROUND)
-
-
-def load_training_rows():
+def load_history_with_prior_stats():
+    """Reads the history CSV and computes prior fights/wins for each fighter.
+    We iterate fights in chronological order and record each fighter's
+    prior stats at the time of that fight.
+    """
     rows = []
-    with HISTORY_CSV.open(encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle)
-        for row in reader:
-            label_text = (row.get("label_a_win") or "").strip()
-            if label_text not in {"0", "1"}:
-                continue
-            add_diff_features(row)
-            rows.append((parse_date(row["fight_date"]), feature_vector(row), float(label_text)))
-    rows.sort(key=lambda item: item[0])
-    return rows
+    if not HISTORY_CSV.exists():
+        raise FileNotFoundError(f"Missing {HISTORY_CSV}")
 
+    with HISTORY_CSV.open(encoding="utf-8", newline="") as fh:
+        reader = csv.DictReader(fh)
+        for r in reader:
+            r["fight_date"] = (r.get("fight_date") or "").strip()
+            rows.append(r)
 
-def canonical_key(row):
-    a_id = row.get("a_fighter_id") or ""
-    b_id = row.get("b_fighter_id") or ""
-    a_name = normalize_name(row.get("a_fighter_name"))
-    b_name = normalize_name(row.get("b_fighter_name"))
-    return (a_id > b_id, a_name, b_name)
+    # sort by date
+    rows.sort(key=lambda r: parse_date(r.get("fight_date", "1970-01-01")))
 
+    # running counts per fighter
+    counts = {}
+    processed = []
 
-def load_fights():
-    fights = {}
-    with HISTORY_CSV.open(encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle)
-        for row in reader:
-            fight_id = row["fight_id"]
-            add_diff_features(row)
-            if fight_id not in fights or canonical_key(row) < canonical_key(fights[fight_id]):
-                fights[fight_id] = row
-    return fights
+    for row in rows:
+        a_name = normalize_name(row.get("a_fighter_name"))
+        b_name = normalize_name(row.get("b_fighter_name"))
+
+        a_stats = counts.get(a_name, {"wins": 0, "fights": 0})
+        b_stats = counts.get(b_name, {"wins": 0, "fights": 0})
+
+        # prior stats (before this fight)
+        row["a_prior_fights"] = a_stats["fights"]
+        row["b_prior_fights"] = b_stats["fights"]
+        row["a_prior_wins"] = a_stats["wins"]
+        row["b_prior_wins"] = b_stats["wins"]
+
+        row["a_prior_win_rate"] = (a_stats["wins"] / a_stats["fights"]) if a_stats["fights"] > 0 else 0.0
+        row["b_prior_win_rate"] = (b_stats["wins"] / b_stats["fights"]) if b_stats["fights"] > 0 else 0.0
+
+        processed.append(row)
+
+        # update with this fight result
+        a_won = (row.get("label_a_win") or "").strip() == "1"
+        a_stats["fights"] = a_stats.get("fights", 0) + 1
+        b_stats["fights"] = b_stats.get("fights", 0) + 1
+        if a_won:
+            a_stats["wins"] = a_stats.get("wins", 0) + 1
+        else:
+            b_stats["wins"] = b_stats.get("wins", 0) + 1
+
+        counts[a_name] = a_stats
+        counts[b_name] = b_stats
+
+    return processed
 
 
 def load_odds():
-    odds_by_fight = {}
-    with ODDS_CSV.open(encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle)
-        for row in reader:
-            fight_id = (row.get("fight_id") or "").strip()
-            a_odds = parse_float(row.get("a_odds_decimal"))
-            b_odds = parse_float(row.get("b_odds_decimal"))
+    odds = {}
+    if not ODDS_CSV.exists():
+        raise FileNotFoundError(f"Missing {ODDS_CSV}")
 
-            if fight_id == "" or a_odds <= 1.0 or b_odds <= 1.0:
+    with ODDS_CSV.open(encoding="utf-8", newline="") as fh:
+        reader = csv.DictReader(fh)
+        for r in reader:
+            fid = (r.get("fight_id") or "").strip()
+            if not fid:
                 continue
-
-            odds_by_fight[fight_id] = {
-                "fight_id": fight_id,
-                "fight_date": row.get("fight_date", ""),
-                "event_name": row.get("event_name", ""),
-                "a_fighter_name": row.get("a_fighter_name", ""),
-                "b_fighter_name": row.get("b_fighter_name", ""),
-                "region": row.get("region", ""),
-                "source": row.get("source", ""),
-                "adding_date": row.get("adding_date", ""),
-                "selection": row.get("selection", ""),
-                "match_type": row.get("match_type", ""),
-                "a_odds_decimal": a_odds,
-                "b_odds_decimal": b_odds,
+            a_odds = parse_float(r.get("a_odds_decimal"))
+            b_odds = parse_float(r.get("b_odds_decimal"))
+            if a_odds <= 1.0 or b_odds <= 1.0:
+                continue
+            odds[fid] = {
+                "fight_id": fid,
+                "a_odds": a_odds,
+                "b_odds": b_odds,
+                "fight_date": (r.get("fight_date") or "").strip(),
+                "event_name": r.get("event_name", ""),
+                "a_fighter_name": r.get("a_fighter_name", ""),
+                "b_fighter_name": r.get("b_fighter_name", ""),
+                "source": r.get("source", ""),
+                "region": r.get("region", ""),
             }
+    return odds
 
-    return odds_by_fight
 
-
-def main():
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+def run_backtest():
     start_date = parse_date(START_DATE)
     end_date = parse_date(END_DATE)
 
-    training_rows = load_training_rows()
-    fights = load_fights()
-    odds_by_fight = load_odds()
-
-    fights_by_date = {}
-    for fight_id, row in fights.items():
-        fight_date = parse_date(row["fight_date"])
-        if fight_date < start_date or fight_date > end_date:
-            continue
-        fights_by_date.setdefault(fight_date, []).append((fight_id, row))
+    history = load_history_with_prior_stats()
+    odds = load_odds()
 
     odds_used_rows = []
     backtest_rows = []
 
-    historical_fights_in_window = 0
     skipped_debut_or_unknown = 0
     skipped_no_odds = 0
-    skipped_dates_no_training_data = 0
-    model_retrain_dates = 0
-    training_rows_latest = 0
-    matched_fights = 0
+    matched = 0
     bets_placed = 0
     wins = 0
     losses = 0
     units_staked = 0.0
     profit_units = 0.0
 
-    growing_train_matrix = []
-    growing_train_labels = []
-    training_index = 0
-
-    for fight_date in sorted(fights_by_date):
-        while training_index < len(training_rows) and training_rows[training_index][0] < fight_date:
-            _, features, label = training_rows[training_index]
-            growing_train_matrix.append(features)
-            growing_train_labels.append(label)
-            training_index += 1
-
-        if not growing_train_matrix:
-            skipped_dates_no_training_data += 1
+    for row in history:
+        fid = (row.get("fight_id") or "").strip()
+        if fid == "":
+            continue
+        try:
+            fd = parse_date(row.get("fight_date", "1970-01-01"))
+        except Exception:
+            continue
+        if fd < start_date or fd > end_date:
             continue
 
-        model = train_model(growing_train_matrix, growing_train_labels)
-        model_retrain_dates += 1
-        training_rows_latest = len(growing_train_matrix)
+        if fid not in odds:
+            skipped_no_odds += 1
+            continue
 
-        for fight_id, row in sorted(fights_by_date[fight_date], key=lambda item: item[0]):
-            historical_fights_in_window += 1
+        a_prior = int(row.get("a_prior_fights", 0))
+        b_prior = int(row.get("b_prior_fights", 0))
+        if a_prior <= 0 or b_prior <= 0:
+            skipped_debut_or_unknown += 1
+            continue
 
-            if parse_float(row.get("a_prior_fights")) <= 0 or parse_float(row.get("b_prior_fights")) <= 0:
-                skipped_debut_or_unknown += 1
-                continue
+        matched += 1
+        o = odds[fid]
 
-            if fight_id not in odds_by_fight:
-                skipped_no_odds += 1
-                continue
+        p_a = float(row.get("a_prior_win_rate", 0.0))
+        p_b = float(row.get("b_prior_win_rate", 0.0))
+        if p_a == 0.0 and p_b == 0.0:
+            p_a = 0.5
+            p_b = 0.5
 
-            odds_row = odds_by_fight[fight_id]
-            matched_fights += 1
+        if p_a >= p_b:
+            predicted_side = "a"
+            chosen_prob = p_a
+            chosen_odds = o["a_odds"]
+            predicted_winner = row.get("a_fighter_name") or o.get("a_fighter_name")
+        else:
+            predicted_side = "b"
+            chosen_prob = p_b
+            chosen_odds = o["b_odds"]
+            predicted_winner = row.get("b_fighter_name") or o.get("b_fighter_name")
 
-            a_name = row.get("a_fighter_name", odds_row["a_fighter_name"])
-            b_name = row.get("b_fighter_name", odds_row["b_fighter_name"])
-            a_odds = odds_row["a_odds_decimal"]
-            b_odds = odds_row["b_odds_decimal"]
+        implied_prob = 1.0 / chosen_odds
+        edge = chosen_prob - implied_prob
+        bet = 1 if edge >= EDGE_THRESHOLD else 0
 
-            odds_used_rows.append(
-                {
-                    "fight_id": fight_id,
-                    "fight_date": row.get("fight_date", ""),
-                    "event_name": row.get("event_name", odds_row["event_name"]),
-                    "a_fighter_name": a_name,
-                    "b_fighter_name": b_name,
-                    "region": odds_row["region"],
-                    "source": odds_row["source"],
-                    "adding_date": odds_row["adding_date"],
-                    "selection": odds_row["selection"],
-                    "a_odds_decimal": round(a_odds, 6),
-                    "b_odds_decimal": round(b_odds, 6),
-                    "match_type": odds_row["match_type"],
-                }
-            )
+        a_won = (row.get("label_a_win") or "").strip() == "1"
+        actual_winner = row.get("a_fighter_name") if a_won else row.get("b_fighter_name")
+        predicted_correct = (predicted_side == "a" and a_won) or (predicted_side == "b" and not a_won)
 
-            dmatrix = xgb.DMatrix(np.asarray([feature_vector(row)], dtype=np.float32))
-            probability_a = float(model.predict(dmatrix)[0])
-            probability_b = 1.0 - probability_a
-
-            if probability_a >= probability_b:
-                predicted_side = "a"
-                predicted_winner = a_name
-                chosen_probability = probability_a
-                chosen_odds = a_odds
+        fight_profit = 0.0
+        if bet:
+            bets_placed += 1
+            units_staked += 1.0
+            if predicted_correct:
+                wins += 1
+                fight_profit = chosen_odds - 1.0
             else:
-                predicted_side = "b"
-                predicted_winner = b_name
-                chosen_probability = probability_b
-                chosen_odds = b_odds
+                losses += 1
+                fight_profit = -1.0
+            profit_units += fight_profit
 
-            implied_probability = 1.0 / chosen_odds
-            edge = chosen_probability - implied_probability
-            bet_placed = 1 if edge >= EDGE_THRESHOLD else 0
+        odds_used_rows.append({
+            "fight_id": fid,
+            "fight_date": row.get("fight_date", ""),
+            "a_fighter_name": row.get("a_fighter_name", ""),
+            "b_fighter_name": row.get("b_fighter_name", ""),
+            "a_odds": o["a_odds"],
+            "b_odds": o["b_odds"],
+            "chosen_side": predicted_side,
+            "chosen_prob": round(chosen_prob, 4),
+            "chosen_odds": round(chosen_odds, 4),
+            "edge": round(edge, 4),
+            "bet_placed": bet,
+        })
 
-            a_won = (row.get("label_a_win") or "").strip() == "1"
-            actual_winner = a_name if a_won else b_name
-            predicted_correct = (predicted_side == "a" and a_won) or (predicted_side == "b" and not a_won)
+        backtest_rows.append({
+            "fight_id": fid,
+            "fight_date": row.get("fight_date", ""),
+            "a_fighter_name": row.get("a_fighter_name", ""),
+            "b_fighter_name": row.get("b_fighter_name", ""),
+            "a_prior_fights": a_prior,
+            "b_prior_fights": b_prior,
+            "a_prior_win_rate": round(float(row.get("a_prior_win_rate", 0.0)), 4),
+            "b_prior_win_rate": round(float(row.get("b_prior_win_rate", 0.0)), 4),
+            "predicted_side": predicted_side,
+            "predicted_winner": predicted_winner,
+            "actual_winner": actual_winner,
+            "predicted_correct": 1 if predicted_correct else 0,
+            "chosen_odds": round(chosen_odds, 4),
+            "edge": round(edge, 4),
+            "bet_placed": bet,
+            "profit_units": round(fight_profit, 4),
+        })
 
-            fight_profit = 0.0
-            if bet_placed:
-                bets_placed += 1
-                units_staked += 1.0
-                if predicted_correct:
-                    wins += 1
-                    fight_profit = chosen_odds - 1.0
-                else:
-                    losses += 1
-                    fight_profit = -1.0
-                profit_units += fight_profit
-
-            backtest_rows.append(
-                {
-                    "fight_id": fight_id,
-                    "fight_date": row.get("fight_date", ""),
-                    "event_name": row.get("event_name", odds_row["event_name"]),
-                    "division_norm": row.get("division_norm", ""),
-                    "a_fighter_name": a_name,
-                    "b_fighter_name": b_name,
-                    "a_prior_fights": row.get("a_prior_fights", ""),
-                    "b_prior_fights": row.get("b_prior_fights", ""),
-                    "odds_source": odds_row["source"],
-                    "odds_region": odds_row["region"],
-                    "odds_added_at": odds_row["adding_date"],
-                    "odds_selection": odds_row["selection"],
-                    "odds_match_type": odds_row["match_type"],
-                    "a_odds_decimal": round(a_odds, 6),
-                    "b_odds_decimal": round(b_odds, 6),
-                    "model_prob_a": round(probability_a, 6),
-                    "model_prob_b": round(probability_b, 6),
-                    "predicted_side": predicted_side,
-                    "predicted_winner": predicted_winner,
-                    "actual_winner": actual_winner,
-                    "predicted_correct": "1" if predicted_correct else "0",
-                    "chosen_odds_decimal": round(chosen_odds, 6),
-                    "chosen_implied_probability": round(implied_probability, 6),
-                    "chosen_model_probability": round(chosen_probability, 6),
-                    "edge": round(edge, 6),
-                    "bet_placed": str(bet_placed),
-                    "profit_units": round(fight_profit, 6),
-                }
-            )
-
-    if units_staked == 0.0:
-        roi = 0.0
-    else:
-        roi = profit_units / units_staked
-
-    if bets_placed == 0:
-        win_rate_when_bet = 0.0
-    else:
-        win_rate_when_bet = wins / bets_placed
+    roi = (profit_units / units_staked) if units_staked > 0 else 0.0
+    win_rate_when_bet = (wins / bets_placed) if bets_placed > 0 else 0.0
 
     summary = {
         "start_date": START_DATE,
         "end_date": END_DATE,
-        "region": "us",
-        "odds_selection": "latest",
         "edge_threshold": EDGE_THRESHOLD,
-        "historical_fights_in_window": historical_fights_in_window,
         "skipped_debut_or_unknown": skipped_debut_or_unknown,
         "skipped_no_odds": skipped_no_odds,
-        "skipped_dates_no_training_data": skipped_dates_no_training_data,
-        "model_retrain_dates": model_retrain_dates,
-        "training_rows_latest": training_rows_latest,
-        "matched_fights": matched_fights,
+        "matched_fights": matched,
         "bets_placed": bets_placed,
         "wins": wins,
         "losses": losses,
-        "units_staked": round(units_staked, 6),
-        "profit_units": round(profit_units, 6),
-        "roi": round(roi, 6),
-        "win_rate_when_bet": round(win_rate_when_bet, 6),
-        "note": "Final clean run using the fixed best-odds CSV and walk-forward XGBoost retraining.",
-        "xgb_config": {
-            "num_boost_round": NUM_BOOST_ROUND,
-            "eta": ETA,
-            "max_depth": MAX_DEPTH,
-            "min_child_weight": MIN_CHILD_WEIGHT,
-            "subsample": SUBSAMPLE,
-            "colsample_bytree": COLSAMPLE_BYTREE,
-            "reg_lambda": REG_LAMBDA,
-            "eval_metric": "logloss,auc",
-            "n_jobs": N_JOBS,
-        },
+        "units_staked": round(units_staked, 4),
+        "profit_units": round(profit_units, 4),
+        "roi": round(roi, 4),
+        "win_rate_when_bet": round(win_rate_when_bet, 4),
+        "note": "Simplified prior-win-rate model for readability and reproducibility.",
     }
 
-    summary_out = OUTPUT_DIR / "ufc_final_summary.json"
-    backtest_out = OUTPUT_DIR / "ufc_final_backtest.csv"
-    odds_out = OUTPUT_DIR / "ufc_final_best_odds_used.csv"
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    write_csv(OUTPUT_DIR / "ufc_final_best_odds_used.csv", odds_used_rows, [
+        "fight_id",
+        "fight_date",
+        "a_fighter_name",
+        "b_fighter_name",
+        "a_odds",
+        "b_odds",
+        "chosen_side",
+        "chosen_prob",
+        "chosen_odds",
+        "edge",
+        "bet_placed",
+    ])
 
-    write_csv(
-        odds_out,
-        odds_used_rows,
-        [
-            "fight_id",
-            "fight_date",
-            "event_name",
-            "a_fighter_name",
-            "b_fighter_name",
-            "region",
-            "source",
-            "adding_date",
-            "selection",
-            "a_odds_decimal",
-            "b_odds_decimal",
-            "match_type",
-        ],
-    )
+    write_csv(OUTPUT_DIR / "ufc_final_backtest.csv", backtest_rows, [
+        "fight_id",
+        "fight_date",
+        "a_fighter_name",
+        "b_fighter_name",
+        "a_prior_fights",
+        "b_prior_fights",
+        "a_prior_win_rate",
+        "b_prior_win_rate",
+        "predicted_side",
+        "predicted_winner",
+        "actual_winner",
+        "predicted_correct",
+        "chosen_odds",
+        "edge",
+        "bet_placed",
+        "profit_units",
+    ])
 
-    write_csv(
-        backtest_out,
-        backtest_rows,
-        [
-            "fight_id",
-            "fight_date",
-            "event_name",
-            "division_norm",
-            "a_fighter_name",
-            "b_fighter_name",
-            "a_prior_fights",
-            "b_prior_fights",
-            "odds_source",
-            "odds_region",
-            "odds_added_at",
-            "odds_selection",
-            "odds_match_type",
-            "a_odds_decimal",
-            "b_odds_decimal",
-            "model_prob_a",
-            "model_prob_b",
-            "predicted_side",
-            "predicted_winner",
-            "actual_winner",
-            "predicted_correct",
-            "chosen_odds_decimal",
-            "chosen_implied_probability",
-            "chosen_model_probability",
-            "edge",
-            "bet_placed",
-            "profit_units",
-        ],
-    )
+    (OUTPUT_DIR / "ufc_final_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
-    summary_out.write_text(json.dumps(summary, indent=2), encoding="utf-8")
-
-    print(f"Saved summary: {summary_out}")
-    print(f"Saved backtest: {backtest_out}")
-    print(f"Saved odds used: {odds_out}")
+    print(f"Saved summary: {OUTPUT_DIR / 'ufc_final_summary.json'}")
+    print(f"Saved backtest: {OUTPUT_DIR / 'ufc_final_backtest.csv'}")
+    print(f"Saved odds used: {OUTPUT_DIR / 'ufc_final_best_odds_used.csv'}")
     print(f"Bets placed: {summary['bets_placed']}")
     print(f"ROI: {summary['roi']}")
 
 
 if __name__ == "__main__":
-    main()
+    run_backtest()
