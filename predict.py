@@ -23,19 +23,10 @@ DEFAULT_XGB_MODEL_PATH = BASE_DIR / "ufc_predict_manual_card_xgboost_model_reduc
 EXCLUDED_TRAIN_COLUMNS = {"fight_id", "fight_date", "split", "label_a_win"}
 
 
-# ---------------------------------------------------------------------------
-# XGBoost hyperparameters -- THE ONLY PLACE YOU SHOULD NEED TO EDIT.
-#
-# Change any value below and every run picks it up automatically (these
-# become the CLI defaults too, so `python ufc_predict.py --matchups ...`
-# with no extra flags always trains with exactly what's here). You can
-# still override a single run from the command line with e.g.
-# `--max-depth 6`, but you no longer need to.
-# ---------------------------------------------------------------------------
 @dataclass
 class XGBConfig:
     num_boost_round: int = 500         # n_estimators / boosting rounds
-    eta: float = 0.035                 # learning rate
+    eta: float = 0.035                # learning rate
     max_depth: int = 5
     min_child_weight: float = 3.0
     subsample: float = 0.80

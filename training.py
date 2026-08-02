@@ -3,11 +3,11 @@ import xgboost as xgb
 from sklearn.metrics import accuracy_score, roc_auc_score, log_loss
 
 model = xgb.XGBClassifier(
-    n_estimators=65,
-    learning_rate=0.05,
+    n_estimators=64,
+    learning_rate=0.0501,
     max_depth=5,
     subsample=0.80,
-    colsample_bytree=0.80,
+    colsample_bytree=0.8,
     min_child_weight=3,
     reg_lambda=1,
     random_state=42,

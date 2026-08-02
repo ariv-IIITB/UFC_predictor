@@ -6,7 +6,7 @@ data = pd.read_csv('final_data.csv')
 data['fight_date'] = pd.to_datetime(data['fight_date'])
 
 # splitting into training and testing data
-cutoff_date = pd.to_datetime('2026-06-28')
+cutoff_date = pd.to_datetime('2025-02-28')
 train_data = data[data['fight_date'] <= cutoff_date]
 test_data = data[data['fight_date'] > cutoff_date]
 
