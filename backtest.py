@@ -1,10 +1,4 @@
-"""
-Simplified backtest script - student-friendly and dependency-free.
-Reads history_for_odds.csv and ufc_final_best_odds.csv, uses simple
-prior-win-rate as the model, and evaluates a thresholded betting strategy.
 
-This version avoids heavy ML libs, is easy to read, and is safe to run.
-"""
 
 import csv
 import json
@@ -16,7 +10,7 @@ HISTORY_CSV = BASE_DIR / "history_for_odds.csv"
 ODDS_CSV = BASE_DIR / "ufc_final_best_odds.csv"
 OUTPUT_DIR = BASE_DIR
 
-# Config (easy to tweak)
+# Config 
 START_DATE = "2021-01-01"
 END_DATE = "2025-09-06"
 EDGE_THRESHOLD = 0.03  # only bet when model edge over implied prob >= this
@@ -49,10 +43,7 @@ def write_csv(path, rows, fieldnames):
 
 
 def load_history_with_prior_stats():
-    """Reads the history CSV and computes prior fights/wins for each fighter.
-    We iterate fights in chronological order and record each fighter's
-    prior stats at the time of that fight.
-    """
+
     rows = []
     if not HISTORY_CSV.exists():
         raise FileNotFoundError(f"Missing {HISTORY_CSV}")

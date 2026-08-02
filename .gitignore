@@ -1,3 +1,5 @@
 .local-packages/
 __pycache__/
 *.pyc
+manual_card_predictions.csv
+manual_card_prediction_rows.csv
