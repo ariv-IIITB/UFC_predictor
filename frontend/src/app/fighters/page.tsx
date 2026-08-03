@@ -68,19 +68,6 @@ export default async function FightersPage({ searchParams }: PageProps) {
               style={{ border: `2px solid ${INK}`, color: INK, fontFamily: GROTESK }}
             />
             <select
-              name="division"
-              defaultValue={division}
-              className="bg-white text-xs font-bold uppercase tracking-widest px-3 py-2.5 focus:outline-none"
-              style={{ border: `2px solid ${INK}`, color: INK, fontFamily: GROTESK }}
-            >
-              <option value="">All Divisions</option>
-              {['Heavyweight','Light Heavyweight','Middleweight','Welterweight','Lightweight',
-                'Featherweight','Bantamweight','Flyweight',"Women's Strawweight",
-                "Women's Flyweight","Women's Bantamweight","Women's Featherweight"].map(d => (
-                <option key={d} value={d}>{d}</option>
-              ))}
-            </select>
-            <select
               name="sort"
               defaultValue={sort}
               className="bg-white text-xs font-bold uppercase tracking-widest px-3 py-2.5 focus:outline-none"
