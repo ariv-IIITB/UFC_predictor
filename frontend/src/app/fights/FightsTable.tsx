@@ -84,20 +84,6 @@ export default function FightsTable({ rows, total, page, pageSize, sort, dir, di
           </button>
         </form>
 
-        <select
-          value={division}
-          onChange={e => push({ division: e.target.value })}
-          className="text-xs font-medium px-3 py-2.5 focus:outline-none cursor-pointer"
-          style={{ background: '#fff', border: '2px solid ' + INK, color: INK }}
-        >
-          <option value="">All Divisions</option>
-          {['Heavyweight', 'Light Heavyweight', 'Middleweight', 'Welterweight', 'Lightweight',
-            'Featherweight', 'Bantamweight', 'Flyweight', "Women's Strawweight",
-            "Women's Flyweight", "Women's Bantamweight", "Women's Featherweight"].map(d => (
-            <option key={d} value={d}>{d}</option>
-          ))}
-        </select>
-
         <button
           onClick={() => push({ betOnly: betOnly ? '' : 'true' })}
           className="text-xs tracking-widest uppercase font-bold px-4 py-2.5 transition hover:brightness-95"
