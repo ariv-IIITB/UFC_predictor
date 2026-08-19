@@ -15,37 +15,34 @@ Here is a high-level schematic of how the different pieces of the project commun
 
 ```mermaid
 flowchart TD
-    U[User] --> V[Vercel<br/>Next.js + React Frontend]
+    U[User]
+    V[Next.js React Frontend<br/>Hosted on Vercel]
+    S[(Supabase Database)]
+    P[Precomputed Predictions<br/>predictions table]
+    F[Fighter Statistics<br/>fighters table]
+    A[Next.js API Route<br/>/api]
+    H[Ratings Heuristic<br/>ELO + Overall + Style + Form]
+    X[XGBoost<br/>Offline Prediction Pipeline]
+    D[Precomputed Prediction Dataset]
 
-    V --> P[/predict]
-    V --> C[/compare/fighter1/fighter2]
-    V --> B[/build]
+    U --> V
 
-    P -->|Read precomputed predictions| S[(Supabase Database)]
-    C -->|Read fighter stats| S
-    B -->|Read fighter list| S
+    V --> S
+    S --> P
+    S --> F
 
-    S -->|predictions table| P
-    S -->|fighters table| C
-    S -->|fighters table| B
+    X --> D
+    D --> P
 
-    B --> API[Next.js API Route<br/>/api]
-    API -->|Fetch two fighter records| S
-    S -->|fighter stats| API
+    V --> A
+    A --> S
+    S --> F
+    F --> A
+    A --> H
+    H --> A
+    A --> V
 
-    API --> H[Ratings Heuristic<br/>ELO + Overall + Style + Form]
-    H -->|JSON prediction| API
-    API -->|Prediction response| B
-
-    X[XGBoost Model<br/>Offline Prediction Pipeline] --> D[Precomputed Prediction Dataset]
-    D -->|Loaded beforehand| S
-
-    style X fill:#222,stroke:#aaa,color:#fff
-    style S fill:#222,stroke:#aaa,color:#fff
-    style API fill:#222,stroke:#aaa,color:#fff
-    style H fill:#222,stroke:#aaa,color:#fff
-    style V fill:#222,stroke:#aaa,color:#fff
-    style U fill:#222,stroke:#aaa,color:#fff
+    P --> V
 ```
 
 ## How I Built It
