@@ -14,15 +14,38 @@ I built a Machine Learning-powered web application that predicts the outcomes of
 Here is a high-level schematic of how the different pieces of the project communicate:
 
 ```mermaid
-graph TD
-    A[User] -->|Selects Fighters| B(React Frontend<br>Hosted on Vercel)
-    B -->|Axios POST Request| C(Flask API<br>Python Backend)
-    C -->|Fetch Fighter Stats| D[(Supabase<br>Database)]
-    D -->|Returns Stats| C
-    C -->|Runs Inference| E[[XGBoost Model<br>200+ Features]]
-    E -->|Returns Prediction| C
-    C -->|Sends Result| B
-    B -->|Displays Winner| A
+flowchart TD
+    U[User] --> V[Vercel<br/>Next.js + React Frontend]
+
+    V --> P[/predict]
+    V --> C[/compare/fighter1/fighter2]
+    V --> B[/build]
+
+    P -->|Read precomputed predictions| S[(Supabase Database)]
+    C -->|Read fighter stats| S
+    B -->|Read fighter list| S
+
+    S -->|predictions table| P
+    S -->|fighters table| C
+    S -->|fighters table| B
+
+    B --> API[Next.js API Route<br/>/api]
+    API -->|Fetch two fighter records| S
+    S -->|fighter stats| API
+
+    API --> H[Ratings Heuristic<br/>ELO + Overall + Style + Form]
+    H -->|JSON prediction| API
+    API -->|Prediction response| B
+
+    X[XGBoost Model<br/>Offline Prediction Pipeline] --> D[Precomputed Prediction Dataset]
+    D -->|Loaded beforehand| S
+
+    style X fill:#222,stroke:#aaa,color:#fff
+    style S fill:#222,stroke:#aaa,color:#fff
+    style API fill:#222,stroke:#aaa,color:#fff
+    style H fill:#222,stroke:#aaa,color:#fff
+    style V fill:#222,stroke:#aaa,color:#fff
+    style U fill:#222,stroke:#aaa,color:#fff
 ```
 
 ## How I Built It
@@ -31,11 +54,10 @@ The project is split into two main components: the Machine Learning pipeline and
 ### Data & Machine Learning (Python, XGBoost)
 This is the core of the project. I processed a massive dataset of historical UFC fights and spent a significant amount of time on feature engineering. I created over 200 features, such as rolling averages for strikes landed and takedown defense percentages. I chose Python and XGBoost because it handles this kind of complex tabular data exceptionally well compared to other models I tested.
 
-### Backend (Python, Flask, Supabase)
-To serve the model on the web, I built a REST API using Python and Flask. The API takes the user's selected fighters, runs them through the trained model, and returns the prediction. I also integrated Supabase to store all the static fighter data, making the frontend fetching process fast and reliable.
 
-### Frontend (React.js, Axios)
-Since my background is primarily in ML, I learned React specifically for this project to build the user interface. It is a straightforward React application that uses Axios to send requests to my Flask backend and display the results cleanly on the screen. It gets the job done perfectly and was a great learning experience.
+
+### Frontend (React.js)
+Since my background is primarily in ML, I learned React specifically for this project to build the user interface. It is a straightforward React application that just takes the data from a static database and displays these results cleanly on the screen. It gets the job done perfectly and was a great learning experience.
 
 ## Deployment
 I deployed the React frontend on Vercel, which made hosting the site very straightforward.
